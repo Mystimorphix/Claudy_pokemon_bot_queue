@@ -3981,24 +3981,28 @@ function buildButtons(guildId) {
   const slots = getSlots(guildId);
   const rows = [];
 
-  const normalSlots = [];
+  const mainSlots = [];
   const bottomSlots = [];
 
   slots.forEach((slot) => {
     if (isResSlot(slot.slot_key)) {
-      return; // skip individual res slots
-    } else if (slot.slot_key === 'org' || slot.slot_key === 'reserver') {
-      bottomSlots.push(slot);
-    } else {
-      normalSlots.push(slot);
+      return;
     }
+
+    if (slot.slot_key === 'org' || slot.slot_key === 'reserver') {
+      bottomSlots.push(slot);
+      return;
+    }
+
+    // preserves original slot ordering
+    mainSlots.push(slot);
   });
 
-  // 🔹 NORMAL SLOT BUTTONS
-  for (let i = 0; i < normalSlots.length; i += 5) {
+  // 🔥 MAIN BUTTONS (combined rows)
+  for (let i = 0; i < mainSlots.length; i += 5) {
     const row = new ActionRowBuilder();
 
-    for (const slot of normalSlots.slice(i, i + 5)) {
+    for (const slot of mainSlots.slice(i, i + 5)) {
       const isLockedBooster =
         BOOSTER_SLOT_KEYS.has(slot.slot_key) &&
         !!state?.booster_locked &&
@@ -4020,7 +4024,7 @@ function buildButtons(guildId) {
     rows.push(row);
   }
 
-  // 🔥 RES BUTTONS (NOW ABOVE ORG/RESERVER)
+  // 🔹 RESERVE BUTTONS
   rows.push(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -4037,40 +4041,38 @@ function buildButtons(guildId) {
     )
   );
 
-  // 🔹 ORG + RESERVER (NOW BELOW RES)
-  if (bottomSlots.length) {
-    const row = new ActionRowBuilder();
+  // 🔹 ORG / RESERVER / BOOSTER CONTROLS
+  const bottomRow = new ActionRowBuilder();
 
-    for (const slot of bottomSlots) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`claim:${guildId}:${slot.slot_key}`)
-          .setLabel(slot.slot_label)
-          .setStyle(
-            slot.user_id
-              ? ButtonStyle.Secondary
-              : ButtonStyle.Primary
-          )
-          .setDisabled(!!slot.user_id)
-      );
-    }
-
-    rows.push(row);
+  // Org + Reserver
+  for (const slot of bottomSlots.slice(0, 2)) {
+    bottomRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`claim:${guildId}:${slot.slot_key}`)
+        .setLabel(slot.slot_label)
+        .setStyle(
+          slot.user_id
+            ? ButtonStyle.Secondary
+            : ButtonStyle.Primary
+        )
+        .setDisabled(!!slot.user_id)
+    );
   }
 
-  // 🔹 BOOSTER CONTROLS (unchanged)
-  rows.push(
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`boosterlock:${guildId}:lock`)
-        .setLabel('Lock Boosters')
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
-        .setCustomId(`boosterlock:${guildId}:unlock`)
-        .setLabel('Unlock Boosters')
-        .setStyle(ButtonStyle.Success)
-    )
+  // Booster controls
+  bottomRow.addComponents(
+    new ButtonBuilder()
+      .setCustomId(`boosterlock:${guildId}:lock`)
+      .setLabel('Lock Boosters')
+      .setStyle(ButtonStyle.Danger),
+
+    new ButtonBuilder()
+      .setCustomId(`boosterlock:${guildId}:unlock`)
+      .setLabel('Unlock Boosters')
+      .setStyle(ButtonStyle.Success)
   );
+
+  rows.push(bottomRow);
 
   return rows;
 }
