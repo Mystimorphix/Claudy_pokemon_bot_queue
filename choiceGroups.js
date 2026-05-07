@@ -1,4 +1,210 @@
 const CHOICE_GROUPS = {
+
+  jenn: [
+    'carbink',
+    'cryogonal',
+    'darumaka',
+    'ditto',
+    'espurr',
+    'gastrodon',
+    'karrablast',
+    'kecleon',
+    'munchlax',
+    'poltchageist',
+    'shuckle',
+    'squirtle'
+  ],
+
+  tina: [
+    'dragonair',
+    'magcargo',
+    'mienshao',
+    'murkrow',
+    'oranguru',
+    'spheal',
+    'toedscruel',
+    'toxel',
+    'vanillite',
+    'vullaby',
+    'wooper'
+  ],
+
+  moe: [
+    'aerodactyl',
+    'amaura',
+    'axew',
+    'cubchoo',
+    'espurr',
+    'froslass',
+    'gothita',
+    'milotic',
+    'riolu',
+    'tynamo'
+  ],
+
+  nikkey: [
+    'chimecho',
+    'chingling',
+    'decidueye',
+    'dhelmise',
+    'impidimp',
+    'klink',
+    'maractus',
+    'mareanie',
+    'wimpod'
+  ],
+
+  claudy: [
+    'absol',
+    'arcanine',
+    'buneary',
+    'cinccino',
+    'cottonee',
+    'dubwool',
+    'eldegoss',
+    'flaaffy',
+    'gossifleur',
+    'growlithe',
+    'jumpluff',
+    'mareep',
+    'slurpuff',
+    'swablu',
+    'swirlix',
+    'whimsicott',
+    'wooloo'
+  ],
+
+  aeries: [
+    'raichu',
+    'crobat',
+    'altaria',
+    'zorua',
+    'goodra',
+    'rockruff',
+    'morelull',
+    'salazzle',
+    'stufful',
+    'wooloo',
+    'snom',
+    'clodsire',
+    'dracozolt',
+    'arctozolt',
+    'sprigatito'
+  ],
+
+  yuri: [
+    'aipom',
+    'ambipom',
+    'ampharos',
+    'audino',
+    'bounsweet',
+    'clefable',
+    'clefairy',
+    'corphish',
+    'darumaka',
+    'dragonair',
+    'dratini',
+    'drowzee',
+    'ducklett',
+    'eiscue',
+    'espurr',
+    'flaaffy',
+    'furret',
+    'hatenna',
+    'hattrem',
+    'hypno',
+    'jumpluff',
+    'mareep',
+    'mienshao',
+    'minccino',
+    'polteageist',
+    'qwilfish',
+    'ribombee',
+    'sinistea',
+    'skiploom',
+    'slakoth',
+    'sneasel',
+    'steenee',
+    'cherrim',
+    'toxel',
+    'tsareena',
+    'vanillite',
+    'wynaut'
+  ],
+
+  ninji: [
+    'bonsly',
+    'charmander',
+    'dragalge',
+    'greavard',
+    'larvitar',
+    'rattata',
+    'rotom',
+    'sableye',
+    'salandit'
+  ],
+
+  
+  paper: [
+    'carbink',
+    'cutiefly',
+    'galvantula',
+    'joltik',
+    'minccino',
+    'oricorio',
+    'shellos',
+    'smoliv',
+    'spinarak',
+    'tarountula',
+    'vivillon'
+  ],
+
+  quests: [
+    'chinchou',
+    'cubchoo',
+    'dachsbun',
+    'doublade',
+    'hakamo-o',
+    'kadabra',
+    'nuzleaf',
+    'raboot',
+    'rhydon',
+    'staravia',
+    'whirlipede'
+  ],
+
+  
+  starters: [
+    'bulbasaur',
+    'charmander',
+    'chespin',
+    'chikorita',
+    'chimchar',
+    'cyndaquil',
+    'fennekin',
+    'froakie',
+    'fuecoco',
+    'grookey',
+    'litten',
+    'mudkip',
+    'oshawott',
+    'piplup',
+    'popplio',
+    'quaxly',
+    'rowlet',
+    'scorbunny',
+    'snivy',
+    'sobble',
+    'sprigatito',
+    'squirtle',
+    'tepig',
+    'torchic',
+    'totodile',
+    'treecko',
+    'turtwig'
+  ],
+
+
   black: [
   'chandelure',
   'furfrou',
@@ -61,6 +267,19 @@ pink2: [
   'weavile'
 ],
 
+purple: [
+  'braixen',
+  'glameow',
+  'gourgeist',
+  'pumpkaboo',
+  'porygon2',
+  'porygon-z',
+  'spheal',
+  'spritzee',
+  'wailmer',
+  'wurmple'
+  ],
+
 red: [
   'absol',
   'charjabug',
@@ -74,6 +293,91 @@ red: [
   'skorupi',
   'talonflame',
   'tarountula'
+],
+
+gray: [
+  'arctozolt',
+  'beldum',
+  'cetoddle',
+  'cranidos',
+  'fennekin',
+  'golurk',
+  'haxorus',
+  'rampardos',
+  'slugma',
+  'varoom'
+],
+
+gold: [
+  'arbok',
+  'azumarill',
+  'exeggcute',
+  'floatzel',
+  'goodra',
+  'magikarp',
+  'lucario',
+  'pineco',
+  'steelix',
+  'weedle'
+],
+
+green: [
+  'applin',
+  'beedrill',
+  'bronzor',
+  'grimer',
+  'hoppip',
+  'ivysaur',
+  'marill',
+  'nidoqueen',
+  'noibat',
+  'pansage',
+  'pyukumuku',
+  'sandshrew',
+  'scyther',
+  'tangela'
+],
+
+orange: [
+  'combee',
+  'cramorant',
+  'linoone',
+  'metapod',
+  'morelull',
+  'pineco',
+  'scorbunny',
+  'shellder',
+  'shinx',
+  'stufful',
+  'vibrava',
+  'zigzagoon'
+],
+
+white: [
+  'amaura',
+  'altaria',
+  'tatsugiri',
+  'golisopod',
+  'litten',
+  'salandit',
+  'scatterbug',
+  'whimsicott'
+],
+
+yellow: [
+  'caterpie',
+  'dipplin',
+  'dondozo',
+  'exeggutor',
+  'ferrothorn',
+  'floatzel',
+  'geodude',
+  'greavard',
+  'hoothoot',
+  'joltik',
+  'kricketot',
+  'meowstic',
+  'rellor'
 ],
 
 balls: [
@@ -143,6 +447,18 @@ flowers: [
   'sunflora'
 ],
 
+foxes: [
+  'braixen',
+  'delphox',
+  'fennekin',
+  'nickit',
+  'ninetales',
+  'thievul',
+  'vulpix',
+  'zoroark',
+  'zorua',
+],
+
 forms1: [
   'basculin',
   'cramorant',
@@ -160,6 +476,7 @@ forms2: [
   'castform',
   'cherrim',
   'darmanitan',
+  'normal zen darmanitan',
   'flabebe',
   'floette',
   'florges',
@@ -387,150 +704,6 @@ spookies: [
   'mimikyu',
   'spiritomb',
   'trevenant'
-],
-
-jenn: [
-  'carbink',
-  'cryogonal',
-  'darumaka',
-  'ditto',
-  'espurr',
-  'gastrodon',
-  'karrablast',
-  'kecleon',
-  'munchlax',
-  'poltchageist',
-  'shuckle',
-  'squirtle'
-],
-
-tina: [
-  'dragonair',
-  'magcargo',
-  'mienshao',
-  'murkrow',
-  'oranguru',
-  'spheal',
-  'toedscruel',
-  'toxel',
-  'vanillite',
-  'vullaby',
-  'wooper'
-],
-
-moe: [
-  'aerodactyl',
-  'amaura',
-  'axew',
-  'cubchoo',
-  'espurr',
-  'froslass',
-  'gothita',
-  'milotic',
-  'riolu',
-  'tynamo'
-],
-
-nikkey: [
-  'chimecho',
-  'chingling',
-  'decidueye',
-  'dhelmise',
-  'impidimp',
-  'klink',
-  'maractus',
-  'mareanie',
-  'wimpod'
-],
-
-claudy: [
-  'absol',
-  'arcanine',
-  'buneary',
-  'cinccino',
-  'cottonee',
-  'dubwool',
-  'eldegoss',
-  'flaaffy',
-  'gossifleur',
-  'growlithe',
-  'jumpluff',
-  'mareep',
-  'slurpuff',
-  'swablu',
-  'swirlix',
-  'whimsicott',
-  'wooloo'
-],
-
-aeries: [
-  'raichu',
-  'crobat',
-  'altaria',
-  'zorua',
-  'goodra',
-  'rockruff',
-  'morelull',
-  'salazzle',
-  'stufful',
-  'wooloo',
-  'snom',
-  'clodsire',
-  'dracozolt',
-  'arctozolt',
-  'sprigatito'
-],
-
-yuri: [
-  'aipom',
-  'ambipom',
-  'ampharos',
-  'audino',
-  'bounsweet',
-  'clefable',
-  'clefairy',
-  'corphish',
-  'darumaka',
-  'dragonair',
-  'dratini',
-  'drowzee',
-  'ducklett',
-  'eiscue',
-  'espurr',
-  'flaaffy',
-  'furret',
-  'hatenna',
-  'hattrem',
-  'hypno',
-  'jumpluff',
-  'mareep',
-  'mienshao',
-  'minccino',
-  'polteageist',
-  'qwilfish',
-  'ribombee',
-  'sinistea',
-  'skiploom',
-  'slakoth',
-  'sneasel',
-  'steenee',
-  'cherrim',
-  'toxel',
-  'tsareena',
-  'vanillite',
-  'wynaut'
-],
-
-ninji: [
-  'bonsly',
-  'charmander',
-  'dragalge',
-  'greavard',
-  'larvitar',
-  'rattata',
-  'rotom',
-  'sableye',
-  'salandit'
 ],
 
 bears: [
@@ -767,91 +940,6 @@ underwater: [
   'wailmer',
   'wailord',
   'walrein'
-],
-
-gray: [
-  'arctozolt',
-  'beldum',
-  'cetoddle',
-  'cranidos',
-  'fennekin',
-  'golurk',
-  'haxorus',
-  'rampardos',
-  'slugma',
-  'varoom'
-],
-
-gold: [
-  'arbok',
-  'azumarill',
-  'exeggcute',
-  'floatzel',
-  'goodra',
-  'magikarp',
-  'lucario',
-  'pineco',
-  'steelix',
-  'weedle'
-],
-
-green: [
-  'applin',
-  'beedrill',
-  'bronzor',
-  'grimer',
-  'hoppip',
-  'ivysaur',
-  'marill',
-  'nidoqueen',
-  'noibat',
-  'pansage',
-  'pyukumuku',
-  'sandshrew',
-  'scyther',
-  'tangela'
-],
-
-orange: [
-  'combee',
-  'cramorant',
-  'linoone',
-  'metapod',
-  'morelull',
-  'pineco',
-  'scorbunny',
-  'shellder',
-  'shinx',
-  'stufful',
-  'vibrava',
-  'zigzagoon'
-],
-
-white: [
-  'amaura',
-  'altaria',
-  'tatsugiri',
-  'golisopod',
-  'litten',
-  'salandit',
-  'scatterbug',
-  'whimsicott'
-],
-
-yellow: [
-  'caterpie',
-  'dipplin',
-  'dondozo',
-  'exeggutor',
-  'ferrothorn',
-  'floatzel',
-  'geodude',
-  'greavard',
-  'hoothoot',
-  'joltik',
-  'kricketot',
-  'meowstic',
-  'rellor'
 ],
 
 dishes: [
