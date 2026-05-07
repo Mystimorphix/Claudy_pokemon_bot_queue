@@ -3981,50 +3981,56 @@ function buildButtons(guildId) {
   const slots = getSlots(guildId);
   const rows = [];
 
-  const mainSlots = [];
-  const bottomSlots = [];
+  const mainOrder = [
+    'rare',
+    'regional',
+    'gmax',
+    'eevos',
+    'choice1',
+    'choice2',
+    'booster1',
+    'booster2',
+    'donor',
+  ];
 
-  slots.forEach((slot) => {
-    if (isResSlot(slot.slot_key)) {
-      return;
-    }
+  const mainSlots = mainOrder
+    .map((key) => slots.find((slot) => slot.slot_key === key))
+    .filter(Boolean);
 
-    if (slot.slot_key === 'org' || slot.slot_key === 'reserver') {
-      bottomSlots.push(slot);
-      return;
-    }
+  const eventSlots = slots.filter((slot) => isEventSlot(slot.slot_key));
 
-    // preserves original slot ordering
-    mainSlots.push(slot);
-  });
+  const orgSlot = slots.find((slot) => slot.slot_key === 'org');
+  const reserverSlot = slots.find((slot) => slot.slot_key === 'reserver');
 
-  // 🔥 MAIN BUTTONS (combined rows)
+  function makeClaimButton(slot) {
+    const isLockedBooster =
+      BOOSTER_SLOT_KEYS.has(slot.slot_key) &&
+      !!state?.booster_locked &&
+      !slot.user_id;
+
+    return new ButtonBuilder()
+      .setCustomId(`claim:${guildId}:${slot.slot_key}`)
+      .setLabel(slot.slot_label)
+      .setStyle(
+        slot.user_id
+          ? ButtonStyle.Secondary
+          : getOpenButtonStyle(slot.slot_key, !!state?.booster_locked)
+      )
+      .setDisabled(isLockedBooster || !!slot.user_id);
+  }
+
+  // Row 1-2: main slots only
   for (let i = 0; i < mainSlots.length; i += 5) {
     const row = new ActionRowBuilder();
 
     for (const slot of mainSlots.slice(i, i + 5)) {
-      const isLockedBooster =
-        BOOSTER_SLOT_KEYS.has(slot.slot_key) &&
-        !!state?.booster_locked &&
-        !slot.user_id;
-
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(`claim:${guildId}:${slot.slot_key}`)
-          .setLabel(slot.slot_label)
-          .setStyle(
-            slot.user_id
-              ? ButtonStyle.Secondary
-              : getOpenButtonStyle(slot.slot_key, !!state?.booster_locked)
-          )
-          .setDisabled(isLockedBooster || !!slot.user_id)
-      );
+      row.addComponents(makeClaimButton(slot));
     }
 
     rows.push(row);
   }
 
-  // 🔹 RESERVE BUTTONS
+  // Row 3: reserves
   rows.push(
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -4041,25 +4047,23 @@ function buildButtons(guildId) {
     )
   );
 
-  // 🔹 ORG / RESERVER / BOOSTER CONTROLS
-  const bottomRow = new ActionRowBuilder();
+  // Row 4: event slots only
+  if (eventSlots.length) {
+    const row = new ActionRowBuilder();
 
-  // Org + Reserver
-  for (const slot of bottomSlots.slice(0, 2)) {
-    bottomRow.addComponents(
-      new ButtonBuilder()
-        .setCustomId(`claim:${guildId}:${slot.slot_key}`)
-        .setLabel(slot.slot_label)
-        .setStyle(
-          slot.user_id
-            ? ButtonStyle.Secondary
-            : ButtonStyle.Primary
-        )
-        .setDisabled(!!slot.user_id)
-    );
+    for (const slot of eventSlots.slice(0, 5)) {
+      row.addComponents(makeClaimButton(slot));
+    }
+
+    rows.push(row);
   }
 
-  // Booster controls
+  // Row 5: org / reserver / lock / unlock
+  const bottomRow = new ActionRowBuilder();
+
+  if (orgSlot) bottomRow.addComponents(makeClaimButton(orgSlot));
+  if (reserverSlot) bottomRow.addComponents(makeClaimButton(reserverSlot));
+
   bottomRow.addComponents(
     new ButtonBuilder()
       .setCustomId(`boosterlock:${guildId}:lock`)
@@ -4074,7 +4078,7 @@ function buildButtons(guildId) {
 
   rows.push(bottomRow);
 
-  return rows;
+  return rows.slice(0, 5);
 }
 
 function getNextOpenSlotFromKeys(guildId, slotKeys) {
