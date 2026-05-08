@@ -3526,8 +3526,9 @@ function buildQueueEmbedFromSlots(slots, options = {}) {
 
   const normalSlots = [];
   const resSlots = [];
-  const bottomSlots = [];
   const eventSlots = [];
+  const bottomSlots = [];
+  
 
   slots.forEach((slot) => {
     if (isResSlot(slot.slot_key)) {
@@ -3632,6 +3633,16 @@ function buildQueueEmbedFromSlots(slots, options = {}) {
         inline: true,
       }
     );
+  }
+
+  if (eventSlots.length) {
+    eventSlots.forEach((slot) => {
+      embed.addFields({
+        name: slot.slot_label,
+        value: buildSlotValue(slot),
+        inline: true,
+      });
+    });
   }
 
   bottomSlots.forEach((slot) => {
