@@ -1,5 +1,31 @@
 const CHOICE_GROUPS = {
 
+  vikavolt: [
+    'dwebble',
+    'omastar',
+    'onix',
+    'snover',
+    'spheal',
+    'surskit',
+    'swinub',
+    'toedscruel',
+    'torterra',
+    'wimpod',
+  ],
+
+  ledbya: [
+    'anorith',
+    'dewpider',
+    'lotad',
+    'omanyte',
+    'quagsire',
+    'rhydon',
+    'shuckle',
+    'snom',
+    'toedscool',
+    'totodile',
+  ],
+
   jenn: [
     'carbink',
     'cryogonal',
