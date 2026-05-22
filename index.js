@@ -5661,14 +5661,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			      { name: 'Regional Buys', value: String(profile.regional_buys), inline: true },
 			      { name: 'Gmax Buys', value: String(profile.gmax_buys), inline: true },
 			      { name: 'Eevee Buys', value: String(profile.eevos_buys), inline: true },
-            {
-              name: 'Choice / Reserve Buys',
-              value:
-                `Choice: ${profile.choice_buys || 0}\n` +
-                `Single Res: ${profile.single_res_buys || 0}\n` +
-                `Double Res: ${profile.double_res_buys || 0}`,
-              inline: true,
-            },
+            { name: 'Choice Buys', value: String(profile.choice_buys), inline: true },
+            { name: 'Single Res', value: String(profile.single_res_buys), inline: true },
+            { name: 'Double Res', value: String(profile.double_res_buys), inline: true },
             { name: 'Main Profile', value: mainText, inline: false },
 			      { name: 'Linked Alts', value: linkedAlts, inline: false }
 			    )
