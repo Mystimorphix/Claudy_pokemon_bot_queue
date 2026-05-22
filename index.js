@@ -1,5 +1,42 @@
 require('dotenv').config();
 
+const admin = require('firebase-admin');
+
+let firestore = null;
+
+if (process.env.USE_FIREBASE_PROFILES === 'true') {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    }),
+  });
+
+  firestore = admin.firestore();
+  console.log('[firebase] Firestore initialized');
+}
+
+function useFirebaseProfiles() {
+  return !!firestore;
+}
+
+function profileCollection(guildId) {
+  return firestore.collection('guilds').doc(guildId).collection('buyer_profiles');
+}
+
+function linkCollection(guildId) {
+  return firestore.collection('guilds').doc(guildId).collection('buyer_profile_links');
+}
+
+function eventCollection(guildId) {
+  return firestore.collection('guilds').doc(guildId).collection('buyer_point_events');
+}
+
+function awardedRoundCollection(guildId) {
+  return firestore.collection('guilds').doc(guildId).collection('buyer_awarded_rounds');
+}
+
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -79,7 +116,7 @@ const MONITORED_CHANNELS = [
 
 const EPHEMERAL = 64;
 
-const EVENT_QUEUE_ENABLED = true;
+const EVENT_QUEUE_ENABLED = false;
 
 const EVENT_SLOT_CONFIG = [
   {
@@ -203,8 +240,6 @@ const FIXED_REMOVE_TAIL = [
   'Regional',
   'Gmax',
   'Paradox',
-  'Swarming Ledyba',
-  'Cicada Vikavolt'
 ];
 
 const ALL_FORM_POKEMON = new Set([
@@ -307,8 +342,6 @@ const REGIONAL_FORM_BASE_POKEMON = new Set([
   'basculin',
   'wooper',
   'tauros',
-  'vikavolt',
-  'ledyba'
 ])
 
 const dbPath = process.env.DB_PATH || 'queue.db';
@@ -530,131 +563,237 @@ async function safeInteractionReply(interaction, payload) {
   }
 }
 
-function forceLinkAlt(guildId, altUserId, mainUserId, staffUserId) {
+async function forceLinkAlt(guildId, altUserId, mainUserId, staffUserId) {
+  const now = new Date().toISOString();
+  const profileId = await ensureBuyerProfile(guildId, mainUserId);
+
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      INSERT INTO buyer_profile_links
+      (guild_id, user_id, profile_id, status, created_at, approved_by, approved_at)
+      VALUES (?, ?, ?, 'approved', ?, ?, ?)
+      ON CONFLICT(guild_id, user_id)
+      DO UPDATE SET
+        profile_id = excluded.profile_id,
+        status = 'approved',
+        approved_by = excluded.approved_by,
+        approved_at = excluded.approved_at
+    `).run(guildId, altUserId, profileId, now, staffUserId, now);
+
+    return profileId;
+  }
+
+  await linkCollection(guildId).doc(altUserId).set({
+    user_id: altUserId,
+    profile_id: profileId,
+    status: 'approved',
+    created_at: now,
+    approved_by: staffUserId,
+    approved_at: now,
+  }, { merge: true });
+
+  return profileId;
+}
+
+async function createPendingAltLink(guildId, altUserId, mainUserId) {
+  const now = new Date().toISOString();
+  const profileId = await ensureBuyerProfile(guildId, mainUserId);
+
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      INSERT INTO buyer_profile_links
+      (guild_id, user_id, profile_id, status, created_at)
+      VALUES (?, ?, ?, 'pending', ?)
+      ON CONFLICT(guild_id, user_id)
+      DO UPDATE SET
+        profile_id = excluded.profile_id,
+        status = 'pending',
+        created_at = excluded.created_at,
+        approved_by = NULL,
+        approved_at = NULL
+    `).run(guildId, altUserId, profileId, now);
+
+    return profileId;
+  }
+
+  await linkCollection(guildId).doc(altUserId).set({
+    user_id: altUserId,
+    profile_id: profileId,
+    status: 'pending',
+    created_at: now,
+    approved_by: null,
+    approved_at: null,
+  }, { merge: true });
+
+  return profileId;
+}
+
+async function approveAltLink(guildId, altUserId, staffUserId) {
   const now = new Date().toISOString();
 
-  ensureBuyerProfile(guildId, mainUserId);
+  if (!useFirebaseProfiles()) {
+    const row = db.prepare(`
+      SELECT *
+      FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND user_id = ?
+        AND status = 'pending'
+    `).get(guildId, altUserId);
 
-  db.prepare(`
-    INSERT INTO buyer_profile_links
-    (guild_id, user_id, profile_id, status, created_at, approved_by, approved_at)
-    VALUES (?, ?, ?, 'approved', ?, ?, ?)
-    ON CONFLICT(guild_id, user_id)
-    DO UPDATE SET
-      profile_id = excluded.profile_id,
-      status = 'approved',
-      approved_by = excluded.approved_by,
-      approved_at = excluded.approved_at
-  `).run(guildId, altUserId, mainUserId, now, staffUserId, now);
+    if (!row) return null;
+
+    db.prepare(`
+      UPDATE buyer_profile_links
+      SET status = 'approved',
+          approved_by = ?,
+          approved_at = ?
+      WHERE guild_id = ?
+        AND user_id = ?
+    `).run(staffUserId, now, guildId, altUserId);
+
+    return row;
+  }
+
+  const ref = linkCollection(guildId).doc(altUserId);
+  const snap = await ref.get();
+
+  if (!snap.exists) return null;
+
+  const data = snap.data();
+  if (data.status !== 'pending') return null;
+
+  await ref.update({
+    status: 'approved',
+    approved_by: staffUserId,
+    approved_at: now,
+  });
+
+  return data;
 }
 
-function createPendingAltLink(guildId, altUserId, mainUserId) {
+async function unlinkAlt(guildId, userId) {
+  if (!useFirebaseProfiles()) {
+    const result = db.prepare(`
+      DELETE FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND user_id = ?
+    `).run(guildId, userId);
+
+    return result.changes > 0;
+  }
+
+  const ref = linkCollection(guildId).doc(userId);
+  const snap = await ref.get();
+
+  if (!snap.exists) return false;
+
+  await ref.delete();
+  return true;
+}
+
+async function resetBuyerProfile(guildId, userId) {
+  const profileId = await getProfileIdForUser(guildId, userId);
+
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      DELETE FROM buyer_profiles
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).run(guildId, profileId);
+
+    db.prepare(`
+      DELETE FROM buyer_point_events
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).run(guildId, profileId);
+
+    db.prepare(`
+      DELETE FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).run(guildId, profileId);
+
+    db.prepare(`
+      DELETE FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND user_id = ?
+    `).run(guildId, userId);
+
+    return;
+  }
+
+  await profileCollection(guildId).doc(profileId).delete();
+
+  const events = await eventCollection(guildId)
+    .where('profile_id', '==', profileId)
+    .get();
+
+  for (const doc of events.docs) {
+    await doc.ref.delete();
+  }
+
+  const linksByProfile = await linkCollection(guildId)
+    .where('profile_id', '==', profileId)
+    .get();
+
+  for (const doc of linksByProfile.docs) {
+    await doc.ref.delete();
+  }
+
+  await linkCollection(guildId).doc(userId).delete();
+}
+
+async function adjustBuyerPoints(guildId, userId, amount, reason, staffUserId) {
+  const profileId = await ensureBuyerProfile(guildId, userId);
   const now = new Date().toISOString();
 
-  ensureBuyerProfile(guildId, mainUserId);
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      UPDATE buyer_profiles
+      SET points = MAX(points + ?, 0),
+          choice_res_points = MAX(choice_res_points + ?, 0),
+          updated_at = ?
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).run(amount, amount, now, guildId, profileId);
 
-  db.prepare(`
-    INSERT INTO buyer_profile_links
-    (guild_id, user_id, profile_id, status, created_at)
-    VALUES (?, ?, ?, 'pending', ?)
-    ON CONFLICT(guild_id, user_id)
-    DO UPDATE SET
-      profile_id = excluded.profile_id,
-      status = 'pending',
-      created_at = excluded.created_at,
-      approved_by = NULL,
-      approved_at = NULL
-  `).run(guildId, altUserId, mainUserId, now);
-}
+    db.prepare(`
+      INSERT INTO buyer_point_events
+      (guild_id, profile_id, user_id, slot_key, points_delta, reason, created_at)
+      VALUES (?, ?, ?, NULL, ?, ?, ?)
+    `).run(
+      guildId,
+      profileId,
+      userId,
+      amount,
+      `manual:${staffUserId}:${reason || 'No reason provided'}`,
+      now
+    );
 
-function approveAltLink(guildId, altUserId, staffUserId) {
-  const now = new Date().toISOString();
+    return;
+  }
 
-  const row = db.prepare(`
-    SELECT *
-    FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND user_id = ?
-      AND status = 'pending'
-  `).get(guildId, altUserId);
+  const ref = profileCollection(guildId).doc(profileId);
 
-  if (!row) return null;
+  await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() || {};
 
-  db.prepare(`
-    UPDATE buyer_profile_links
-    SET status = 'approved',
-        approved_by = ?,
-        approved_at = ?
-    WHERE guild_id = ?
-      AND user_id = ?
-  `).run(staffUserId, now, guildId, altUserId);
+    tx.set(ref, {
+      points: Math.max((data.points || 0) + amount, 0),
+      choice_res_points: Math.max((data.choice_res_points || 0) + amount, 0),
+      updated_at: now,
+    }, { merge: true });
+  });
 
-  return row;
-}
-
-function unlinkAlt(guildId, userId) {
-  const result = db.prepare(`
-    DELETE FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND user_id = ?
-  `).run(guildId, userId);
-
-  return result.changes > 0;
-}
-
-function resetBuyerProfile(guildId, userId) {
-  const profileId = getProfileIdForUser(guildId, userId);
-
-  db.prepare(`
-    DELETE FROM buyer_profiles
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).run(guildId, profileId);
-
-  db.prepare(`
-    DELETE FROM buyer_point_events
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).run(guildId, profileId);
-
-  db.prepare(`
-    DELETE FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).run(guildId, profileId);
-
-  db.prepare(`
-    DELETE FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND user_id = ?
-  `).run(guildId, userId);
-}
-
-function adjustBuyerPoints(guildId, userId, amount, reason, staffUserId) {
-  const profileId = ensureBuyerProfile(guildId, userId);
-  const now = new Date().toISOString();
-
-  db.prepare(`
-    UPDATE buyer_profiles
-    SET points = MAX(points + ?, 0),
-        choice_res_points = MAX(choice_res_points + ?, 0),
-        updated_at = ?
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).run(amount, amount, now, guildId, profileId);
-
-  db.prepare(`
-    INSERT INTO buyer_point_events
-    (guild_id, profile_id, user_id, slot_key, points_delta, reason, created_at)
-    VALUES (?, ?, ?, NULL, ?, ?, ?)
-  `).run(
-    guildId,
-    profileId,
-    userId,
-    amount,
-    `manual:${staffUserId}:${reason || 'No reason provided'}`,
-    now
-  );
+  await eventCollection(guildId).add({
+    profile_id: profileId,
+    user_id: userId,
+    slot_key: null,
+    points_delta: amount,
+    reason: `manual:${staffUserId}:${reason || 'No reason provided'}`,
+    created_at: now,
+  });
 }
 
 function csvEscape(value) {
@@ -662,124 +801,148 @@ function csvEscape(value) {
   return `"${text.replace(/"/g, '""')}"`;
 }
 
-function buildProfilesCsv(guildId) {
-  const profiles = db.prepare(`
-    SELECT *
-    FROM buyer_profiles
-    WHERE guild_id = ?
-    ORDER BY points DESC, total_buys DESC
-  `).all(guildId);
+async function buildProfilesCsv(guildId) {
+  let rows;
 
-  const links = db.prepare(`
-    SELECT *
-    FROM buyer_profile_links
-    WHERE guild_id = ?
-    ORDER BY profile_id ASC, user_id ASC
-  `).all(guildId);
+  if (!useFirebaseProfiles()) {
+    rows = db.prepare(`
+      SELECT *
+      FROM buyer_profiles
+      WHERE guild_id = ?
+      ORDER BY points DESC
+    `).all(guildId);
+  } else {
+    const snapshot = await profileCollection(guildId).get();
 
-  const linksByProfile = new Map();
-
-  for (const link of links) {
-    if (!linksByProfile.has(link.profile_id)) {
-      linksByProfile.set(link.profile_id, []);
-    }
-
-    linksByProfile.get(link.profile_id).push(
-      `${link.user_id}:${link.status}`
-    );
+    rows = snapshot.docs.map((doc) => ({
+      profile_id: doc.id,
+      ...doc.data(),
+    }));
   }
 
   const header = [
     'profile_id',
-    'display_user_id',
     'points',
-    'total_buys',
     'choice_res_points',
+    'total_buys',
     'rare_buys',
     'regional_buys',
     'gmax_buys',
-    'eevos_buys',
-    'title',
-    'linked_accounts',
-    'created_at',
-    'updated_at',
+    'eevos_buys'
   ];
 
-  const rows = profiles.map((profile) => [
-    profile.profile_id,
-    profile.display_user_id,
-    profile.points,
-    profile.total_buys,
-    profile.choice_res_points,
-    profile.rare_buys,
-    profile.regional_buys,
-    profile.gmax_buys,
-    profile.eevos_buys,
-    getHighestProfileTitle(profile),
-    (linksByProfile.get(profile.profile_id) || []).join('; '),
-    profile.created_at,
-    profile.updated_at,
-  ]);
+  const lines = [header.join(',')];
 
-  return [
-    header.map(csvEscape).join(','),
-    ...rows.map((row) => row.map(csvEscape).join(',')),
-  ].join('\n');
-}
-
-function getLeaderboard(guildId, type, limit = 10) {
-  let column;
-
-  switch (type) {
-    case 'points':
-      column = 'points';
-      break;
-    case 'rare':
-      column = 'rare_buys';
-      break;
-    case 'regional':
-      column = 'regional_buys';
-      break;
-    case 'gmax':
-      column = 'gmax_buys';
-      break;
-    case 'eevee':
-      column = 'eevos_buys';
-      break;
-    default:
-      column = 'points';
+  for (const row of rows) {
+    lines.push([
+      row.profile_id,
+      row.points || 0,
+      row.choice_res_points || 0,
+      row.total_buys || 0,
+      row.rare_buys || 0,
+      row.regional_buys || 0,
+      row.gmax_buys || 0,
+      row.eevos_buys || 0
+    ].join(','));
   }
 
-  return db.prepare(`
-    SELECT profile_id, ${column} as value
-    FROM buyer_profiles
-    WHERE guild_id = ?
-    ORDER BY ${column} DESC
-    LIMIT ?
-  `).all(guildId, limit);
+  return lines.join('\n');
 }
 
-function getProfileIdForUser(guildId, userId) {
-  const link = db.prepare(`
-    SELECT profile_id
-    FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND user_id = ?
-      AND status = 'approved'
-  `).get(guildId, userId);
+async function getLeaderboard(guildId, limit = 10) {
+  if (!useFirebaseProfiles()) {
+    return db.prepare(`
+      SELECT *
+      FROM buyer_profiles
+      WHERE guild_id = ?
+      ORDER BY points DESC,
+               total_buys DESC
+      LIMIT ?
+    `).all(guildId, limit);
+  }
 
-  return link?.profile_id || userId;
+  const snapshot = await profileCollection(guildId)
+    .orderBy('points', 'desc')
+    .limit(limit)
+    .get();
+
+  return snapshot.docs.map((doc) => ({
+    profile_id: doc.id,
+    ...doc.data(),
+  }));
 }
 
-function ensureBuyerProfile(guildId, userId) {
-  const profileId = getProfileIdForUser(guildId, userId);
+async function getProfileIdForUser(guildId, userId) {
+  if (!useFirebaseProfiles()) {
+    const link = db.prepare(`
+      SELECT profile_id
+      FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND user_id = ?
+        AND status = 'approved'
+    `).get(guildId, userId);
+
+    return link?.profile_id || userId;
+  }
+
+  const doc = await linkCollection(guildId)
+    .doc(userId)
+    .get();
+
+  if (!doc.exists) {
+    return userId;
+  }
+
+  const data = doc.data();
+
+  return data?.status === 'approved'
+    ? data.profile_id
+    : userId;
+}
+
+async function ensureBuyerProfile(guildId, userId) {
+  const profileId = await getProfileIdForUser(
+    guildId,
+    userId
+  );
+
   const now = new Date().toISOString();
 
-  db.prepare(`
-    INSERT OR IGNORE INTO buyer_profiles
-    (guild_id, profile_id, display_user_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(guildId, profileId, profileId, now, now);
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      INSERT OR IGNORE INTO buyer_profiles
+      (guild_id, profile_id, display_user_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      guildId,
+      profileId,
+      profileId,
+      now,
+      now
+    );
+
+    return profileId;
+  }
+
+  const ref = profileCollection(guildId).doc(profileId);
+
+  const snapshot = await ref.get();
+
+  if (!snapshot.exists) {
+    await ref.set({
+      profile_id: profileId,
+      display_user_id: profileId,
+      points: 0,
+      total_buys: 0,
+      rare_buys: 0,
+      regional_buys: 0,
+      gmax_buys: 0,
+      eevos_buys: 0,
+      choice_res_points: 0,
+      created_at: now,
+      updated_at: now,
+    });
+  }
 
   return profileId;
 }
@@ -802,88 +965,137 @@ function isCountableBuySlot(slotKey) {
   );
 }
 
-function awardBuyerProfileForSlot(guildId, userId, slotKey) {
-  const profileId = ensureBuyerProfile(guildId, userId);
+async function awardBuyerProfileForSlot(guildId, userId, slotKey) {
+  const profileId = await ensureBuyerProfile(guildId, userId);
   const points = getProfilePointsForSlot(slotKey);
   const now = new Date().toISOString();
 
   const shouldCountBuy = isCountableBuySlot(slotKey) ? 1 : 0;
-
   const rare = slotKey === 'rare' ? 1 : 0;
   const regional = slotKey === 'regional' ? 1 : 0;
   const gmax = slotKey === 'gmax' ? 1 : 0;
   const eevos = slotKey === 'eevos' ? 1 : 0;
-  const choiceResPoints = points;
 
-  db.prepare(`
-    UPDATE buyer_profiles
-    SET
-      points = points + ?,
-      choice_res_points = choice_res_points + ?,
-      total_buys = total_buys + ?,
-      rare_buys = rare_buys + ?,
-      regional_buys = regional_buys + ?,
-      gmax_buys = gmax_buys + ?,
-      eevos_buys = eevos_buys + ?,
-      updated_at = ?
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).run(
-    points,
-    choiceResPoints,
-    shouldCountBuy,
-    rare,
-    regional,
-    gmax,
-    eevos,
-    now,
-    guildId,
-    profileId
-  );
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      UPDATE buyer_profiles
+      SET
+        points = points + ?,
+        choice_res_points = choice_res_points + ?,
+        total_buys = total_buys + ?,
+        rare_buys = rare_buys + ?,
+        regional_buys = regional_buys + ?,
+        gmax_buys = gmax_buys + ?,
+        eevos_buys = eevos_buys + ?,
+        updated_at = ?
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).run(
+      points,
+      points,
+      shouldCountBuy,
+      rare,
+      regional,
+      gmax,
+      eevos,
+      now,
+      guildId,
+      profileId
+    );
 
-  db.prepare(`
-    INSERT INTO buyer_point_events
-    (guild_id, profile_id, user_id, slot_key, points_delta, reason, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    guildId,
-    profileId,
-    userId,
-    slotKey,
-    points,
-    `finish_award:${slotKey}`,
-    now
-  );
+    db.prepare(`
+      INSERT INTO buyer_point_events
+      (guild_id, profile_id, user_id, slot_key, points_delta, reason, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      guildId,
+      profileId,
+      userId,
+      slotKey,
+      points,
+      `finish_award:${slotKey}`,
+      now
+    );
+
+    return;
+  }
+
+  const ref = profileCollection(guildId).doc(profileId);
+
+  await firestore.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const data = snap.data() || {};
+
+    tx.set(ref, {
+      points: (data.points || 0) + points,
+      choice_res_points: (data.choice_res_points || 0) + points,
+      total_buys: (data.total_buys || 0) + shouldCountBuy,
+      rare_buys: (data.rare_buys || 0) + rare,
+      regional_buys: (data.regional_buys || 0) + regional,
+      gmax_buys: (data.gmax_buys || 0) + gmax,
+      eevos_buys: (data.eevos_buys || 0) + eevos,
+      updated_at: now,
+    }, { merge: true });
+  });
+
+  await eventCollection(guildId).add({
+    profile_id: profileId,
+    user_id: userId,
+    slot_key: slotKey,
+    points_delta: points,
+    reason: `finish_award:${slotKey}`,
+    created_at: now,
+  });
 }
 
 
-function hasProfileAwardsForRound(guildId, roundNumber) {
-  const row = db.prepare(`
-    SELECT 1
-    FROM buyer_awarded_rounds
-    WHERE guild_id = ?
-      AND round_number = ?
-    LIMIT 1
-  `).get(guildId, roundNumber);
+async function hasProfileAwardsForRound(guildId, roundNumber) {
+  if (!useFirebaseProfiles()) {
+    const row = db.prepare(`
+      SELECT 1
+      FROM buyer_awarded_rounds
+      WHERE guild_id = ?
+        AND round_number = ?
+    `).get(guildId, roundNumber);
 
-  return !!row;
+    return !!row;
+  }
+
+  const doc = await awardedRoundCollection(guildId)
+    .doc(String(roundNumber))
+    .get();
+
+  return doc.exists;
 }
 
-function markProfileAwardsForRound(guildId, roundNumber) {
-  db.prepare(`
-    INSERT OR IGNORE INTO buyer_awarded_rounds
-    (guild_id, round_number, awarded_at)
-    VALUES (?, ?, ?)
-  `).run(guildId, roundNumber, new Date().toISOString());
+async function markProfileAwardsForRound(guildId, roundNumber) {
+  const now = new Date().toISOString();
+
+  if (!useFirebaseProfiles()) {
+    db.prepare(`
+      INSERT OR IGNORE INTO buyer_awarded_rounds
+      (guild_id, round_number, awarded_at)
+      VALUES (?, ?, ?)
+    `).run(guildId, roundNumber, now);
+
+    return;
+  }
+
+  await awardedRoundCollection(guildId)
+    .doc(String(roundNumber))
+    .set({
+      round_number: roundNumber,
+      awarded_at: now,
+    });
 }
 
-function awardBuyerProfilesForFinishedRound(guildId) {
+async function awardBuyerProfilesForFinishedRound(guildId) {
   const state = getQueueState(guildId);
   if (!state) return { awarded: false, reason: 'no_state' };
 
   const roundNumber = Number(state.round_number ?? 1);
 
-  if (hasProfileAwardsForRound(guildId, roundNumber)) {
+  if (await hasProfileAwardsForRound(guildId, roundNumber)) {
     return { awarded: false, reason: 'already_awarded' };
   }
 
@@ -891,34 +1103,58 @@ function awardBuyerProfilesForFinishedRound(guildId) {
 
   for (const slot of slots) {
     if (!slot.user_id) continue;
-    awardBuyerProfileForSlot(guildId, slot.user_id, slot.slot_key);
+    await awardBuyerProfileForSlot(guildId, slot.user_id, slot.slot_key);
   }
 
-  markProfileAwardsForRound(guildId, roundNumber);
+  await markProfileAwardsForRound(guildId, roundNumber);
 
   return { awarded: true, reason: 'ok' };
 }
 
-function getBuyerProfile(guildId, userId) {
-  const profileId = getProfileIdForUser(guildId, userId);
+async function getBuyerProfile(guildId, userId) {
+  const profileId = await getProfileIdForUser(
+    guildId,
+    userId
+  );
 
-  return db.prepare(`
-    SELECT *
-    FROM buyer_profiles
-    WHERE guild_id = ?
-      AND profile_id = ?
-  `).get(guildId, profileId);
+  if (!useFirebaseProfiles()) {
+    return db.prepare(`
+      SELECT *
+      FROM buyer_profiles
+      WHERE guild_id = ?
+        AND profile_id = ?
+    `).get(guildId, profileId);
+  }
+
+  const doc = await profileCollection(guildId)
+    .doc(profileId)
+    .get();
+
+  return doc.exists
+    ? doc.data()
+    : null;
 }
 
-function getLinkedAlts(guildId, profileId) {
-  return db.prepare(`
-    SELECT user_id
-    FROM buyer_profile_links
-    WHERE guild_id = ?
-      AND profile_id = ?
-      AND status = 'approved'
-    ORDER BY created_at ASC
-  `).all(guildId, profileId);
+async function getLinkedAlts(guildId, profileId) {
+  if (!useFirebaseProfiles()) {
+    return db.prepare(`
+      SELECT user_id
+      FROM buyer_profile_links
+      WHERE guild_id = ?
+        AND profile_id = ?
+        AND status = 'approved'
+      ORDER BY created_at ASC
+    `).all(guildId, profileId);
+  }
+
+  const snapshot = await linkCollection(guildId)
+    .where('profile_id', '==', profileId)
+    .where('status', '==', 'approved')
+    .get();
+
+  return snapshot.docs.map((doc) => ({
+    user_id: doc.data().user_id,
+  }));
 }
 
 function getHighestProfileTitle(profile) {
@@ -5278,7 +5514,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         const alt = interaction.options.getUser('alt', true);
         const main = interaction.options.getUser('main', true);
 
-        forceLinkAlt(guild.id, alt.id, main.id, interaction.user.id);
+        await forceLinkAlt(guild.id, alt.id, main.id, interaction.user.id);
 
         return interaction.reply({
           content: `Linked <@${alt.id}> → <@${main.id}>`,
@@ -5355,9 +5591,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			if (interaction.commandName === 'profile') {
 			  const targetUser = interaction.options.getUser('user') || interaction.user;
 			
-			  const profileId = getProfileIdForUser(guild.id, targetUser.id);
+			  const profileId = await getProfileIdForUser(guild.id, targetUser.id);
         const mainText = `<@${profileId}>`;
-			  const profile = getBuyerProfile(guild.id, targetUser.id);
+			  const profile = await getBuyerProfile(guild.id, targetUser.id);
 			
 			  if (!profile) {
 			    return interaction.reply({
@@ -5366,7 +5602,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			    });
 			  }
 			
-			  const linkedAlts = getLinkedAlts(guild.id, profileId)
+			  const linkedAlts = await getLinkedAlts(guild.id, profileId)
 			    .map((row) => `<@${row.user_id}>`)
 			    .join(', ') || 'None';
 			
@@ -5402,7 +5638,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			    });
 			  }
 			
-			  createPendingAltLink(guild.id, interaction.user.id, mainUser.id);
+			  await createPendingAltLink(guild.id, interaction.user.id, mainUser.id);
 			
 			  return interaction.reply({
 			    content:
@@ -5421,7 +5657,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			  }
 			
 			  const altUser = interaction.options.getUser('user', true);
-			  const result = approveAltLink(guild.id, altUser.id, interaction.user.id);
+			  const result = await approveAltLink(guild.id, altUser.id, interaction.user.id);
 			
 			  if (!result) {
 			    return interaction.reply({
@@ -5445,7 +5681,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			  }
 			
 			  const targetUser = interaction.options.getUser('user', true);
-			  const removed = unlinkAlt(guild.id, targetUser.id);
+			  const removed = await unlinkAlt(guild.id, targetUser.id);
 			
 			  return interaction.reply({
 			    content: removed
@@ -5465,7 +5701,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			
 			  const targetUser = interaction.options.getUser('user', true);
 			
-			  resetBuyerProfile(guild.id, targetUser.id);
+			  await resetBuyerProfile(guild.id, targetUser.id);
 			
 			  return interaction.reply({
 			    content: `Buyer profile reset for <@${targetUser.id}>.`,
@@ -5492,7 +5728,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			    });
 			  }
 			
-			  adjustBuyerPoints(guild.id, targetUser.id, amount, reason, interaction.user.id);
+			  await adjustBuyerPoints(guild.id, targetUser.id, amount, reason, interaction.user.id);
 			
 			  return interaction.reply({
 			    content: `Added ${amount} points to <@${targetUser.id}>.`,
@@ -5519,7 +5755,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			    });
 			  }
 			
-			  adjustBuyerPoints(guild.id, targetUser.id, -amount, reason, interaction.user.id);
+			  await adjustBuyerPoints(guild.id, targetUser.id, -amount, reason, interaction.user.id);
 			
 			  return interaction.reply({
 			    content: `Removed ${amount} points from <@${targetUser.id}>.`,
@@ -5535,7 +5771,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			    });
 			  }
 			
-			  const csv = buildProfilesCsv(guild.id);
+			  const csv = await buildProfilesCsv(guild.id);
 			  const buffer = Buffer.from(csv, 'utf8');
 			
 			  const file = new AttachmentBuilder(buffer, {
@@ -5552,7 +5788,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			if (interaction.commandName === 'leaderboard') {
 			  const type = interaction.options.getString('type', true);
 			
-			  const rows = getLeaderboard(guild.id, type);
+			  const rows = await getLeaderboard(guild.id, type);
 			
 			  if (!rows.length) {
 			    return interaction.reply({
@@ -7068,7 +7304,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         rolloverClaimHistoryToPreviousRound(guild.id);
 
-				const profileAwardResult = awardBuyerProfilesForFinishedRound(guild.id);
+				const profileAwardResult = await awardBuyerProfilesForFinishedRound(guild.id);
 				
 				if (profileAwardResult.reason === 'already_awarded') {
 				  console.log('[profile] Awards already given for this round.');
