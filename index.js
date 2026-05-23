@@ -978,6 +978,7 @@ async function ensureBuyerProfile(guildId, userId) {
 }
 
 function getProfilePointsForSlot(slotKey) {
+  if (slotKey === 'regional') return 2;
   if (SINGLE_RES_SLOT_KEYS.includes(slotKey)) return 2;
   if (DOUBLE_RES_SLOT_KEYS.includes(slotKey)) return 4;
   if (isChoiceSlot(slotKey)) return 5;
@@ -4681,7 +4682,7 @@ const commands = [
 	      .setDescription('Leaderboard type')
 	      .setRequired(true)
 	      .addChoices(
-	        { name: 'Points (Choice + Res)', value: 'points' },
+	        { name: 'Points', value: 'points' },
 	        { name: 'Rare', value: 'rare' },
 	        { name: 'Regional', value: 'regional' },
 	        { name: 'Gmax', value: 'gmax' },
@@ -5656,7 +5657,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 			      { name: 'Title', value: getHighestProfileTitle(profile), inline: false },
 			      
 			      { name: 'Total Buys', value: String(profile.total_buys), inline: true },
-			      { name: 'Choice/Res Points', value: String(profile.choice_res_points), inline: true },
+			      { name: 'Buyer Points', value: String(profile.choice_res_points), inline: true },
 			      { name: 'Rare Buys', value: String(profile.rare_buys), inline: true },
 			      { name: 'Regional Buys', value: String(profile.regional_buys), inline: true },
 			      { name: 'Gmax Buys', value: String(profile.gmax_buys), inline: true },
