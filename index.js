@@ -116,21 +116,14 @@ const MONITORED_CHANNELS = [
 
 const EPHEMERAL = 64;
 
-const EVENT_QUEUE_ENABLED = false;
+const EVENT_QUEUE_ENABLED = true;
 
 const EVENT_SLOT_CONFIG = [
   {
     key: 'event1',
-    label: 'Swarming Ledyba',
-    fixedPokemon: 'swarming ledyba',
+    label: 'Pokopia Ditto',
+    fixedPokemon: 'pokopia ditto',
     buyerRoleEnv: 'EVENT1_BUYER_ROLE_ID',
-    maxPokemon: 2,
-  },
-  {
-    key: 'event2',
-    label: 'Cicada Vikavolt',
-    fixedPokemon: 'cicada vikavolt',
-    buyerRoleEnv: 'EVENT2_BUYER_ROLE_ID',
     maxPokemon: 2,
   },
   // add event3 / event4 later if needed
@@ -240,6 +233,7 @@ const FIXED_REMOVE_TAIL = [
   'Regional',
   'Gmax',
   'Paradox',
+  'Pokopia ditto',
 ];
 
 const ALL_FORM_POKEMON = new Set([
@@ -978,7 +972,10 @@ async function ensureBuyerProfile(guildId, userId) {
 }
 
 function getProfilePointsForSlot(slotKey) {
+  if (slotKey === 'rare') return 1;
   if (slotKey === 'regional') return 2;
+  if (slotKey === 'gmax') return 1;
+  if (slotKey === 'eevos') return 1;
   if (SINGLE_RES_SLOT_KEYS.includes(slotKey)) return 1;
   if (DOUBLE_RES_SLOT_KEYS.includes(slotKey)) return 2;
   if (isChoiceSlot(slotKey)) return 3;
