@@ -7586,14 +7586,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (!isMajorFfaSlot(slotKey)) {
           return interaction.reply({
             content: 'Major FFA can only be set for Rare, Regional, Gmax, or Eevees.',
-            flags: EPHEMERAL,
+            
           });
         }
 
         if (!slot || slot.user_id !== user.id) {
           return interaction.reply({
             content: 'You can only set FFA for your own claimed major slot.',
-            flags: EPHEMERAL,
+            
           });
         }
 
@@ -7613,7 +7613,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
         return interaction.reply({
           content: `FFA set for **${slot.slot_label}**: ${uniquePokemon.map(prettyPokemonName).join(', ') || 'None'}`,
-          flags: EPHEMERAL,
+          
         });
       }
 
