@@ -117,7 +117,7 @@ const MONITORED_CHANNELS = [
 
 const EPHEMERAL = 64;
 
-const EVENT_QUEUE_ENABLED = true;
+const EVENT_QUEUE_ENABLED = false;
 
 const EVENT_SLOT_CONFIG = [
   {
