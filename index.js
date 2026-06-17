@@ -8484,7 +8484,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (interaction.isButton()) {
         if (interaction.customId === 'reservepings_copy') {
-          const summary = getFinishedHistory(guild.id);
+          const summary = getFinishedHistory(interaction.guild.id);
 
           if (!summary || !Array.isArray(summary.slotSnapshot)) {
             return interaction.reply({
