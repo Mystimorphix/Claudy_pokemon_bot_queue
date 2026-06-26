@@ -3839,7 +3839,7 @@ function buildFinishSummaryLines(guildId) {
   const lines = [];
 
   lines.push(
-    `<a:31:1496873982366842961><a:32:1496873984489164881><a:33:1496873986951352390><a:34:1496873994618671134><a:35:1496873996682006689><a:36:1496873998699593729><a:37:1496874000524251176>\n**Chosen rares/regs taken**, pls remove: ${chosenRareText} (${mentionUser(rareOwnerId)} ${mentionUser(regionalOwnerId)})`
+    `<a:31:1496873982366842961><a:32:1496873984489164881><a:33:1496873986951352390><a:34:1496873994618671134><a:35:1496873996682006689><a:36:1496873998699593729><a:37:1496874000524251176>\n**Chosen rares/regs taken**, pls remove: **${chosenRareText}** (${mentionUser(rareOwnerId)} ${mentionUser(regionalOwnerId)})`
   );
 
   if (choiceParadoxBuyerId) {
@@ -4759,11 +4759,9 @@ async function finishQueueAndAnnounce(guild, finishedBy) {
 
   const mentions = summary.holderIds.map((id) => `<@${id}>`).join(' ');
   const finishLines = buildFinishSummaryLines(guild.id);
-  await sendBuyerNotifications(guild.id, guild);
-
   const sentMessage = await channel.send({
     content:
-      `**Please buy your channels**, org finished by <@${finishedBy}>.\n${mentions}\n\n` +
+      `Org finished by <@${finishedBy}>.\n${mentions}\n\n` +
       finishLines.join('\n'),
   });
 
@@ -9111,6 +9109,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await refreshQueueMessage(interaction.guild);
 
         if (mode === 'unlock') {
+          await sendBuyerNotifications(interaction.guild.id, interaction.guild);
           const boosterRoleId = process.env.BOOSTER_ROLE_ID?.trim();
           const donorRoleId = process.env.DONOR_ROLE_ID?.trim();
 
