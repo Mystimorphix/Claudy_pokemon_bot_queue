@@ -562,6 +562,16 @@ CREATE TABLE IF NOT EXISTS timed_buyer_roles (
 )
 `).run();
 
+db.prepare(`
+  CREATE TABLE IF NOT EXISTS raffles (
+    id TEXT PRIMARY KEY,
+    entries_json TEXT NOT NULL,
+    num_winners INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    created_by TEXT NOT NULL
+  )
+`).run();
+
 async function giveTimedRole(guild, userId, roleId) {
   if (!roleId) return;
 
@@ -5457,6 +5467,22 @@ const commands = [
     .setName('adminremove')
     .setDescription('Admin remove a player from a claimed slot')
     .addStringOption((option) => addAllSlotChoices(option.setName('slot').setDescription('Slot to clear'))),
+
+  new SlashCommandBuilder()
+    .setName('raffle')
+    .setDescription('Pick raffle winners from a message')
+    .addStringOption(option =>
+      option.setName('message_link')
+        .setDescription('Link to the message containing raffle entries')
+        .setRequired(true)
+    )
+    .addIntegerOption(option =>
+      option.setName('winners')
+        .setDescription('Number of winners to pick (default 1)')
+        .setRequired(false)
+        .setMinValue(1)
+        .setMaxValue(20)
+    ),
 ].map((command) => command.toJSON());
 
 client.once(Events.ClientReady, () => {
@@ -8649,6 +8675,107 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       }
 
+      // raffles, like for redeem events
+      if (interaction.commandName === 'raffle') {
+        if (!hasStaffRole(interaction.member)) {
+          return interaction.reply({
+            content: 'Only staff can use this command.',
+            flags: EPHEMERAL,
+          });
+        }
+
+        await interaction.deferReply();
+
+        // parse inputs
+        const messageLink = interaction.options.getString('message_link', true);
+        const numWinners = interaction.options.getInteger('winners') ?? 1;
+
+        // grab message
+        const resp = await fetchMessageFromLink(client, messageLink);
+        if (!resp) {
+          return interaction.editReply({
+            content: 'That message link is invalid or I cannot access that message.'
+          })
+        }
+        const raffleMsg = resp.content;
+
+        // compute raffle entries
+        const raffleEntries = new Map();
+        let totalEntries = 0;
+
+        for (let entry of raffleMsg.split('\n')) {
+          let match = entry.match(/^(?<user>.*?)\s+(?:-\s+)?(?<entries>\d+)$/);
+          if (match) {
+            const user = match.groups.user;
+            const entries = Number(match.groups.entries);
+            if (entries === 0) continue;
+            raffleEntries.set(
+              user,
+              (raffleEntries.get(user) ?? 0) + entries,
+            )
+            totalEntries += entries;
+          }
+        }
+        if (!raffleEntries.size) {
+          return interaction.editReply({
+            content: `
+            No valid entries found from the following message: ${messageLink}
+            Expected format:
+            [participant1] - [entries]
+            [participant2] - [entries]
+            where entries is a whole number and participant1 is any valid character (eg. 'Ditto Eevee')
+            `
+          })
+        }
+
+        const entryLines = [...raffleEntries.entries()]
+          .map(([user, count]) => `${user} — ${count} entries`)
+          .join('\n');
+
+        const confirmEmbed = new EmbedBuilder()
+          .setTitle('🎟️ Raffle Confirmation')
+          .setColor(0x5865F2)
+          .addFields(
+            { name: 'Participants', value: entryLines.slice(0, 1024), inline: false },
+            { name: 'Total Entries', value: String(totalEntries), inline: true },
+            { name: 'Winners to Pick', value: String(numWinners), inline: true },
+          )
+          .setFooter({ text: 'Confirm to run the raffle' })
+          .setTimestamp();
+
+        // replace the encoded/button section at the bottom of the raffle command
+        const raffleId = Date.now().toString(36) + Math.floor(Math.pow(10, 12) + Math.random() * 9 * Math.pow(10, 12)).toString(36);
+
+        db.prepare(`
+          INSERT INTO raffles (id, entries_json, num_winners, created_at, created_by)
+          VALUES (?, ?, ?, ?, ?)
+          `
+        ).run(
+          raffleId,
+          JSON.stringify(Object.fromEntries(raffleEntries)),
+          numWinners,
+          new Date().toISOString(),
+          interaction.user.id
+        );
+
+        return interaction.editReply({
+          embeds: [confirmEmbed],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`raffle_confirm:${raffleId}`)
+                .setLabel('Run Raffle')
+                .setStyle(ButtonStyle.Success),
+              new ButtonBuilder()
+                .setCustomId(`raffle_cancel:${raffleId}`)
+                .setLabel('Cancel')
+                .setStyle(ButtonStyle.Secondary),
+            ),
+          ],
+        });
+
+      }
+
       return safeInteractionReply(interaction, {
         content: 'Unknown command.',
         flags: EPHEMERAL,
@@ -9175,6 +9302,73 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return interaction.reply({
           content,
         });
+      }
+
+      if (action === 'raffle_cancel') {
+        const raffleId = parts[1];
+        const row = db.prepare(`SELECT * FROM raffles WHERE id = ?`).get(raffleId);
+
+        if (!row) {
+          return interaction.update({ content: 'Raffle data not found.', embeds: [], components: [] });
+        }
+
+        if (row.created_by && row.created_by !== interaction.user.id) {
+          return interaction.reply({ content: 'Only the person who started this raffle can cancel it.', flags: EPHEMERAL });
+        }
+
+        db.prepare(`DELETE FROM raffles WHERE id = ?`).run(raffleId);
+        return interaction.update({ content: 'Raffle cancelled.', embeds: [], components: [] });
+      }
+
+      if (action === 'raffle_confirm') {
+        const raffleId = parts[1];
+        const row = db.prepare(`SELECT * FROM raffles WHERE id = ?`).get(raffleId);
+
+        if (!row) {
+          return interaction.update({ content: 'Raffle data not found.', embeds: [], components: [] });
+        }
+
+        if (row.created_by && row.created_by !== interaction.user.id) {
+          return interaction.reply({ content: 'Only the person who started this raffle can confirm it.', flags: EPHEMERAL });
+        }
+
+        db.prepare(`DELETE FROM raffles WHERE id = ?`).run(raffleId);
+
+        const raffleEntries = new Map(Object.entries(JSON.parse(row.entries_json)));
+        const numWinners = row.num_winners;
+
+        let remainingTotal = [...raffleEntries.values()].reduce((sum, n) => sum + n, 0);
+        let totalParticipants = raffleEntries.size;
+        const remainingEntries = new Map(raffleEntries);
+        const winners = [];
+
+        for (let i = 0; i < Math.min(numWinners, totalParticipants); i++) {
+          const roll = Math.random() * remainingTotal;
+          let current = 0;
+
+          for (const [user, entries] of remainingEntries) {
+            current += entries;
+            if (current > roll) {
+              winners.push(user);
+              remainingTotal -= entries;
+              remainingEntries.delete(user);
+              break;
+            }
+          }
+        }
+
+        const resultsEmbed = new EmbedBuilder()
+          .setTitle('🎉 Raffle Results')
+          .setColor(0x57F287)
+          .addFields({
+            name: `Winner${winners.length > 1 ? 's' : ''}`,
+            value: winners.map((w, i) => `**${i + 1}.** ${w}`).join('\n'),
+          })
+          .setTimestamp();
+
+        return interaction.update({ components: [] }).then(() =>
+          interaction.followUp({ embeds: [resultsEmbed] })
+        );
       }
 
       return interaction.reply({
